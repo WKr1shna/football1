@@ -1,0 +1,871 @@
+/* General Reset & Variables */
+:root {
+    --bg-dark: #05050a;
+    --primary: #32c8ff;
+    --primary-glow: rgba(50, 200, 255, 0.4);
+    --secondary: #ff3296;
+    --secondary-glow: rgba(255, 50, 150, 0.4);
+    --yellow: #ffe650;
+    --yellow-glow: rgba(255, 230, 80, 0.4);
+    --green: #64ff64;
+    --green-glow: rgba(100, 255, 100, 0.4);
+    --red: #ff6464;
+    --red-glow: rgba(255, 100, 100, 0.4);
+    --text-main: #ffffff;
+    --text-muted: #8a8ab0;
+    --glass-bg: rgba(10, 10, 20, 0.8);
+    --glass-border: rgba(50, 150, 255, 0.25);
+    --glass-border-focus: rgba(50, 150, 255, 0.6);
+    --panel-shadow: 0 15px 35px rgba(0, 0, 0, 0.7);
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+}
+
+body {
+    background-color: #020205;
+    color: var(--text-main);
+    font-family: 'Inter', sans-serif;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* App Canvas Container */
+#app-container {
+    width: 1024px;
+    height: 768px;
+    position: relative;
+    overflow: hidden;
+    background: radial-gradient(circle at center, #0e0e1e 0%, #030307 100%);
+    box-shadow: 0 0 100px rgba(0, 0, 0, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Glassmorphic Panel Design */
+.glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    border: 2px solid var(--glass-border);
+    border-radius: 12px;
+    box-shadow: var(--panel-shadow);
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.glass-panel:hover {
+    border-color: var(--glass-border-focus);
+    box-shadow: 0 15px 40px rgba(50, 200, 255, 0.15);
+}
+
+/* Views & States */
+.state-view {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+    display: none;
+    z-index: 10;
+}
+
+.state-view.active {
+    opacity: 1;
+    pointer-events: auto;
+    display: block;
+}
+
+/* 1. Main Menu View */
+#menu-view {
+    padding: 50px;
+    display: grid;
+    grid-template-columns: 480px 1fr;
+    gap: 40px;
+    background-image: url('assets/stadium_bg.jpg');
+    background-size: cover;
+    background-position: center;
+}
+
+#menu-view.active {
+    display: grid;
+}
+
+.left-panel {
+    padding: 45px 40px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+}
+
+.logo {
+    font-family: 'Outfit', sans-serif;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 60px;
+}
+
+.logo-sub {
+    font-size: 30px;
+    font-weight: 300;
+    color: var(--text-main);
+    letter-spacing: 8px;
+    line-height: 1;
+}
+
+.logo-main {
+    font-size: 58px;
+    font-weight: 800;
+    color: var(--primary);
+    text-shadow: 0 0 20px var(--primary-glow);
+    letter-spacing: 2px;
+    line-height: 1.1;
+}
+
+.menu-options {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.menu-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    outline: none;
+    color: var(--text-main);
+    font-family: 'Outfit', sans-serif;
+    font-size: 22px;
+    font-weight: 600;
+    padding: 12px 25px;
+    text-align: left;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    position: relative;
+    overflow: hidden;
+}
+
+.menu-btn::before {
+    content: '> ';
+    opacity: 0;
+    margin-right: 5px;
+    transition: opacity 0.2s ease;
+}
+
+.menu-btn:hover, .menu-btn.active {
+    color: var(--yellow);
+    background: rgba(255, 255, 255, 0.04);
+    border-color: var(--yellow-glow);
+    padding-left: 35px;
+}
+
+.menu-btn:hover::before, .menu-btn.active::before {
+    opacity: 1;
+}
+
+.right-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+}
+
+.webcam-preview-box {
+    width: 350px;
+    height: 262px;
+    overflow: hidden;
+    position: relative;
+    align-self: flex-end;
+    border: 2px solid var(--primary);
+    box-shadow: 0 0 20px var(--primary-glow);
+}
+
+#menu-webcam-canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.preview-label {
+    position: absolute;
+    bottom: 15px;
+    left: 15px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--green);
+    background: rgba(5, 5, 10, 0.85);
+    border: 1px solid rgba(100, 255, 100, 0.3);
+    padding: 3px 10px;
+    border-radius: 4px;
+    letter-spacing: 1px;
+}
+
+.instructions-box {
+    align-self: flex-end;
+    width: 350px;
+    flex-grow: 1;
+    padding: 25px 30px;
+}
+
+.instructions-box h2 {
+    font-family: 'Outfit', sans-serif;
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 15px;
+    letter-spacing: 1px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 5px;
+}
+
+.instructions-box ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.instructions-box li {
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-muted);
+}
+
+.instructions-box strong {
+    color: var(--text-main);
+}
+
+.step-num {
+    color: var(--primary);
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+/* 2. Calibration View */
+#calibration-view {
+    background: #000;
+}
+
+#calibration-canvas {
+    width: 100%;
+    height: 100%;
+}
+
+.calibration-overlay-card {
+    position: absolute;
+    top: 40px;
+    left: 50px;
+    width: 924px;
+    padding: 25px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.calibration-overlay-card h2 {
+    font-family: 'Outfit', sans-serif;
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--yellow);
+    text-shadow: 0 0 10px var(--yellow-glow);
+    text-transform: uppercase;
+}
+
+.calibration-overlay-card p {
+    font-size: 15px;
+    color: var(--text-main);
+}
+
+#calibration-esc {
+    position: absolute;
+    right: 40px;
+    top: 32px;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-family: 'Outfit', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* 3. Gameplay View */
+#game-view {
+    background-color: #000;
+}
+
+#game-canvas {
+    width: 100%;
+    height: 100%;
+}
+
+/* Sports Broadcast style Webcam Box */
+.game-webcam-box {
+    position: absolute;
+    top: 95px;
+    right: 25px;
+    width: 180px;
+    height: 135px;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 2px solid rgba(0, 255, 200, 0.4);
+    box-shadow: 0 0 15px rgba(0, 255, 200, 0.2);
+    background: rgba(5, 5, 10, 0.6);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex;
+    flex-direction: column;
+    z-index: 99;
+}
+
+#game-webcam-canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.broadcast-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 10px;
+    box-sizing: border-box;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.broadcast-status-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(5, 5, 10, 0.7);
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 0.5px solid rgba(255, 255, 255, 0.1);
+    align-self: flex-start;
+}
+
+.status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.green-pulse {
+    background-color: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse-green 1.5s infinite;
+}
+
+.yellow-pulse {
+    background-color: var(--yellow);
+    box-shadow: 0 0 8px var(--yellow);
+    animation: pulse-yellow 1.5s infinite;
+}
+
+.red-pulse {
+    background-color: var(--red);
+    box-shadow: 0 0 8px var(--red);
+    animation: pulse-red 1.5s infinite;
+}
+
+@keyframes pulse-green {
+    0% { box-shadow: 0 0 2px var(--green); }
+    50% { box-shadow: 0 0 10px var(--green); }
+    100% { box-shadow: 0 0 2px var(--green); }
+}
+
+@keyframes pulse-yellow {
+    0% { box-shadow: 0 0 2px var(--yellow); }
+    50% { box-shadow: 0 0 10px var(--yellow); }
+    100% { box-shadow: 0 0 2px var(--yellow); }
+}
+
+@keyframes pulse-red {
+    0% { box-shadow: 0 0 2px var(--red); }
+    50% { box-shadow: 0 0 10px var(--red); }
+    100% { box-shadow: 0 0 2px var(--red); }
+}
+
+#broadcast-status-text {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    font-weight: bold;
+    color: #fff;
+    letter-spacing: 0.5px;
+}
+
+.broadcast-tag {
+    align-self: flex-end;
+    background: rgba(5, 5, 10, 0.7);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--primary);
+    border: 0.5px solid rgba(50, 200, 255, 0.2);
+}
+
+.broadcast-scanline {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%, 
+        rgba(0, 0, 0, 0.25) 50%
+    );
+    background-size: 100% 4px;
+    z-index: 3;
+    pointer-events: none;
+}
+
+.broadcast-glow {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle, transparent 70%, rgba(0, 0, 0, 0.5) 100%);
+    z-index: 4;
+    pointer-events: none;
+}
+
+/* HUD elements */
+.hud-top-bar {
+    position: absolute;
+    top: 20px;
+    left: 25px;
+    right: 25px;
+    height: 70px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    pointer-events: none;
+    z-index: 100;
+}
+
+.hud-top-left, .hud-top-center, .hud-top-right {
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 8px 18px;
+    min-width: 150px;
+    height: 58px;
+    border-radius: 12px;
+    box-sizing: border-box;
+    background: rgba(5, 5, 10, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+#game-view.striker-mode .hud-top-left, 
+#game-view.striker-mode .hud-top-center, 
+#game-view.striker-mode .hud-top-right {
+    border-color: rgba(50, 200, 255, 0.3);
+    box-shadow: 0 0 10px rgba(50, 200, 255, 0.1);
+}
+
+#game-view.keeper-mode .hud-top-left, 
+#game-view.keeper-mode .hud-top-center, 
+#game-view.keeper-mode .hud-top-right {
+    border-color: rgba(0, 255, 200, 0.3);
+    box-shadow: 0 0 10px rgba(0, 255, 200, 0.1);
+}
+
+.hud-top-center {
+    min-width: 200px;
+    text-align: center;
+    align-items: center;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    color: #fff;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
+    letter-spacing: 1px;
+}
+
+.hud-stat-row {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    gap: 15px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    font-weight: bold;
+    color: var(--text-muted);
+}
+
+.hud-stat-row span:first-child {
+    text-transform: uppercase;
+}
+
+.hud-stat-row span:last-child {
+    color: #fff;
+    font-size: 14px;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.4);
+}
+
+.status-green {
+    color: var(--green) !important;
+    text-shadow: 0 0 6px rgba(0, 255, 100, 0.8) !important;
+}
+
+.status-yellow {
+    color: var(--yellow) !important;
+    text-shadow: 0 0 6px rgba(255, 200, 0, 0.8) !important;
+}
+
+.status-red {
+    color: var(--red) !important;
+    text-shadow: 0 0 6px rgba(255, 50, 50, 0.8) !important;
+}
+
+.diff-tag {
+    position: absolute;
+    bottom: 25px;
+    left: 25px;
+    padding: 8px 20px;
+    background: rgba(5, 5, 10, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 14px;
+    font-weight: bold;
+    color: var(--green);
+}
+
+/* Kick Power Meter overlay */
+.power-panel {
+    position: absolute;
+    bottom: 25px;
+    left: 512px;
+    transform: translateX(-50%);
+    width: 380px;
+    padding: 12px 25px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.power-label {
+    font-family: 'Outfit', sans-serif;
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--yellow);
+    white-space: nowrap;
+    letter-spacing: 1px;
+}
+
+.power-track {
+    flex-grow: 1;
+    height: 12px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#power-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #64ff64 0%, #ffe650 70%, #ff3232 100%);
+    border-radius: 6px;
+    transition: width 0.1s ease;
+    box-shadow: 0 0 10px rgba(100, 255, 100, 0.5);
+}
+
+.power-val {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 18px;
+    font-weight: bold;
+    color: #fff;
+    width: 50px;
+    text-align: right;
+}
+
+/* Gameplay Announcements (whistles, goals) */
+.game-announcement {
+    position: absolute;
+    top: 130px;
+    left: 0;
+    width: 100%;
+    text-align: center;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 34px;
+    color: #fff;
+    pointer-events: none;
+    display: none;
+    z-index: 15;
+}
+
+.game-announcement.active {
+    display: block;
+}
+
+.outcome-announcement {
+    font-size: 68px;
+    top: 170px;
+}
+
+/* Large Countdown styling */
+.game-countdown-text {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Outfit', sans-serif;
+    font-size: 150px;
+    font-weight: 800;
+    color: var(--yellow);
+    text-shadow: 0 0 40px var(--yellow-glow);
+    pointer-events: none;
+    display: none;
+    z-index: 150;
+    animation: scale-bounce 1s infinite ease-in-out;
+}
+
+@keyframes scale-bounce {
+    0% { transform: translate(-50%, -50%) scale(0.6); opacity: 0; }
+    50% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1.0); opacity: 0; }
+}
+
+.text-glow {
+    text-shadow: 0 0 20px rgba(255,255,255,0.6);
+}
+
+.text-green {
+    color: var(--green);
+    text-shadow: 0 0 25px var(--green-glow);
+}
+
+.text-blue {
+    color: var(--primary);
+    text-shadow: 0 0 25px var(--primary-glow);
+}
+
+.text-red {
+    color: var(--red);
+    text-shadow: 0 0 25px var(--red-glow);
+}
+
+/* 4. Name Registry Input View */
+#name-input-view {
+    background-image: url('assets/stadium_bg.jpg');
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.name-box {
+    width: 500px;
+    padding: 40px;
+}
+
+.name-box h1 {
+    font-family: 'Outfit', sans-serif;
+    font-size: 42px;
+    font-weight: 800;
+    margin-bottom: 15px;
+}
+
+.glow-yellow {
+    color: var(--yellow);
+    text-shadow: 0 0 20px var(--yellow-glow);
+}
+
+.msg-white {
+    font-size: 18px;
+    margin-bottom: 25px;
+}
+
+.msg-blue {
+    font-family: 'Outfit', sans-serif;
+    font-size: 15px;
+    font-weight: bold;
+    color: var(--primary);
+    margin-bottom: 12px;
+    letter-spacing: 1px;
+}
+
+.input-container {
+    width: 300px;
+    margin: 0 auto 25px auto;
+}
+
+#player-name-input {
+    width: 100%;
+    background: #050508;
+    border: 2px solid var(--primary);
+    border-radius: 8px;
+    color: #fff;
+    font-family: 'Outfit', sans-serif;
+    font-size: 28px;
+    font-weight: bold;
+    text-align: center;
+    padding: 8px;
+    text-transform: uppercase;
+    outline: none;
+}
+
+#player-name-input:focus {
+    box-shadow: 0 0 15px var(--primary-glow);
+}
+
+.msg-gray {
+    font-size: 14px;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+}
+
+/* 5. Leaderboard View */
+#leaderboard-view {
+    background-image: url('assets/stadium_bg.jpg');
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.leaderboard-container {
+    width: 824px;
+    padding: 40px;
+    height: 648px;
+    display: flex;
+    flex-direction: column;
+}
+
+.leaderboard-container h1 {
+    font-family: 'Outfit', sans-serif;
+    font-size: 38px;
+    font-weight: 800;
+    color: var(--primary);
+    text-shadow: 0 0 15px var(--primary-glow);
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.table-wrapper {
+    flex-grow: 1;
+    overflow-y: auto;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    margin-bottom: 20px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Outfit', sans-serif;
+}
+
+th {
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--yellow);
+    text-align: left;
+    padding: 10px 15px;
+    position: sticky;
+    top: 0;
+    background: #090913;
+    z-index: 2;
+}
+
+td {
+    font-size: 16px;
+    padding: 12px 15px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+/* Rank Highlights */
+tr.rank-1 td { color: #ffd700; font-weight: bold; }
+tr.rank-2 td { color: #cccccc; font-weight: bold; }
+tr.rank-3 td { color: #cd7f32; font-weight: bold; }
+
+.exit-msg {
+    text-align: center;
+    font-size: 14px;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+}
+
+/* Global HUD overlays */
+.fps-tag {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    padding: 4px 10px;
+    background: rgba(5, 5, 10, 0.85);
+    border-radius: 4px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: var(--green);
+    z-index: 100;
+    pointer-events: none;
+    border: 0.5px solid rgba(100, 255, 100, 0.2);
+}
+
+/* Debug Overlay HUD */
+.debug-overlay {
+    position: absolute;
+    bottom: 25px;
+    right: 25px;
+    width: 280px;
+    padding: 15px;
+    z-index: 200;
+    pointer-events: none;
+    display: none; /* toggled via js (active class) */
+}
+
+.debug-overlay.active {
+    display: block;
+}
+
+.debug-overlay h4 {
+    font-family: 'Outfit', sans-serif;
+    color: var(--yellow);
+    font-size: 14px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding-bottom: 3px;
+    letter-spacing: 0.5px;
+}
+
+.debug-data {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: #fff;
+    line-height: 1.5;
+}
+
+/* Animations */
+@keyframes blink {
+    0% { opacity: 0.3; }
+    100% { opacity: 1; }
+}
+
+/* Helpers */
+.text-center { text-align: center; }

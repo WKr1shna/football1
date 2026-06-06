@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vision Football Penalty Challenge</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    
+    <!-- MediaPipe CDN Utilities -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+</head>
+<body>
+    <div id="app-container">
+        
+        <!-- MAIN MENU -->
+        <div id="menu-view" class="state-view active">
+            <div class="left-panel glass-panel">
+                <h1 class="logo">
+                    <span class="logo-sub">VISION</span>
+                    <span class="logo-main">FOOTBALL</span>
+                </h1>
+                
+                <div class="menu-options">
+                    <button class="menu-btn active" id="btn-striker" data-index="0">STRIKER MODE</button>
+                    <button class="menu-btn" id="btn-keeper" data-index="1">GOALKEEPER MODE</button>
+                    <button class="menu-btn" id="btn-difficulty" data-index="2">DIFFICULTY: MEDIUM</button>
+                    <button class="menu-btn" id="btn-calibrate" data-index="3">CAMERA CALIBRATION</button>
+                    <button class="menu-btn" id="btn-leaderboard" data-index="4">LEADERBOARD</button>
+                </div>
+            </div>
+            
+            <div class="right-panel">
+                <div class="webcam-preview-box glass-panel">
+                    <canvas id="menu-webcam-canvas" width="350" height="262"></canvas>
+                    <div class="preview-label">LIVE CAMERA PREVIEW</div>
+                </div>
+                
+                <div class="instructions-box glass-panel">
+                    <h2>HOW TO PLAY</h2>
+                    <ul>
+                        <li><span class="step-num">1.</span> Run <strong>CAMERA CALIBRATION</strong> first to calibrate body detection.</li>
+                        <li><span class="step-num">2.</span> <strong>STRIKER MODE</strong>: Raise arms to calibrate. Kick foot left/right/center to shoot.</li>
+                        <li><span class="step-num">3.</span> <strong>GOALKEEPER MODE</strong>: Use both hands to block. Move quickly to dive.</li>
+                        <li><span class="step-num">4.</span> <strong>MOUSE FALLBACK</strong>: Click pitch to kick, or move mouse to control gloves.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <!-- CALIBRATION SCREEN -->
+        <div id="calibration-view" class="state-view">
+            <canvas id="calibration-canvas" width="1024" height="768"></canvas>
+            <div class="calibration-overlay-card glass-panel">
+                <h2 id="calibration-title">STAND IN CENTER & RAISE BOTH ARMS</h2>
+                <p id="calibration-subtitle">Align head, shoulders, hips, knees, and feet in the camera box.</p>
+                <div id="calibration-esc">Press ESC to exit calibration</div>
+            </div>
+        </div>
+        
+        <!-- GAMEPLAY SCREEN -->
+        <div id="game-view" class="state-view">
+            <canvas id="game-canvas" width="1024" height="768"></canvas>
+            
+            <!-- Webcam Corner Feed (Sports Broadcast Style) -->
+            <div class="game-webcam-box">
+                <canvas id="game-webcam-canvas" width="226" height="170"></canvas>
+                <div class="broadcast-overlay">
+                    <div class="broadcast-status-wrapper">
+                        <span id="broadcast-status-dot" class="status-dot green-pulse"></span>
+                        <span id="broadcast-status-text">TRACKING: GOOD</span>
+                    </div>
+                    <div id="broadcast-fps" class="broadcast-tag">30 FPS</div>
+                </div>
+                <div class="broadcast-scanline"></div>
+                <div class="broadcast-glow"></div>
+            </div>
+            
+            <!-- HTML overlays for scores and prompts -->
+            <!-- Professional Top HUD Bar -->
+            <div id="game-hud-bar" class="hud-top-bar">
+                <div class="hud-top-left glass-panel">
+                    <div class="hud-stat-row"><span id="hud-stat1-label">SAVES:</span><span id="hud-stat1-val">0</span></div>
+                    <div class="hud-stat-row"><span id="hud-stat2-label">GOALS:</span><span id="hud-stat2-val">0</span></div>
+                </div>
+                
+                <div class="hud-top-center glass-panel">
+                    <div id="hud-round-text">ROUND 1 / 5</div>
+                </div>
+                
+                <div class="hud-top-right glass-panel">
+                    <div class="hud-stat-row"><span>TRACKING:</span><span id="hud-tracking-val" class="status-green">GOOD</span></div>
+                    <div class="hud-stat-row"><span>FPS:</span><span id="hud-fps-val">60</span></div>
+                </div>
+            </div>
+            
+            <div id="game-difficulty-tag" class="diff-tag">
+                AI: MEDIUM
+            </div>
+            
+            <!-- Live Power Meter Bar -->
+            <div id="power-bar-container" class="power-panel glass-panel">
+                <div class="power-label">KICK POWER</div>
+                <div class="power-track">
+                    <div id="power-bar"></div>
+                </div>
+                <div id="power-text" class="power-val">0%</div>
+            </div>
+            
+            <!-- Live alerts / Prompts -->
+            <div id="game-prompt" class="game-announcement text-glow">
+                PREPARE TO KICK! SWING LEG SPEEDILY
+            </div>
+            
+            <!-- Huge Countdown Display -->
+            <div id="game-countdown" class="game-countdown-text">
+                3
+            </div>
+            
+            <div id="game-outcome" class="game-announcement outcome-announcement">
+                GOAL!!!
+            </div>
+        </div>
+        
+        <!-- NAME INPUT REGISTRY -->
+        <div id="name-input-view" class="state-view">
+            <div class="name-box glass-panel text-center">
+                <h1 class="glow-yellow">NEW HIGH SCORE!</h1>
+                <p id="score-msg" class="msg-white">You scored 4 Goals on MEDIUM!</p>
+                <p class="msg-blue">ENTER NAME (8 CHARS MAX):</p>
+                
+                <div class="input-container">
+                    <input type="text" id="player-name-input" maxlength="8" autofocus placeholder="PLAYER">
+                </div>
+                
+                <p class="msg-gray">PRESS ENTER TO REGISTER</p>
+            </div>
+        </div>
+        
+        <!-- LEADERBOARD SCREEN -->
+        <div id="leaderboard-view" class="state-view">
+            <div class="leaderboard-container glass-panel">
+                <h1>LOCAL LEADERBOARD</h1>
+                <div class="table-wrapper">
+                    <table id="leaderboard-table">
+                        <thead>
+                            <tr>
+                                <th>RK</th>
+                                <th>NAME</th>
+                                <th>MODE</th>
+                                <th>SCORE</th>
+                                <th>DIFFICULTY</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboard-tbody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <p class="exit-msg">PRESS ANY KEY TO RETURN TO MAIN MENU</p>
+            </div>
+        </div>
+        
+        <!-- DEBUG PANEL -->
+        <div id="debug-panel" class="debug-overlay glass-panel">
+            <h4>DEBUG METRICS</h4>
+            <div id="debug-content" class="debug-data">
+                FPS: 60<br>
+                Left Wrist: (0, 0) | Conf: 0.00<br>
+                Right Wrist: (0, 0) | Conf: 0.00<br>
+                Kick Velocity: 0.00 / 0.00<br>
+                Body Lean: 0.00<br>
+                Current Action: NONE
+            </div>
+        </div>
+        
+        <!-- Webcam video stream element (hidden) -->
+        <video id="webcam-video" width="640" height="480" autoplay playsinline muted style="position: absolute; width: 1px; height: 1px; opacity: 0.001; pointer-events: none; z-index: -9999;"></video>
+        
+        <!-- FPS Overlay -->
+        <div id="fps-counter" class="fps-tag">
+            FPS: 60 | WEBCAM: ON | CALIBRATION: DEFAULT
+        </div>
+    </div>
+    
+    <!-- Game scripts -->
+    <script src="js/audio.js"></script>
+    <script src="js/physics.js"></script>
+    <script src="js/vision.js"></script>
+    <script src="js/game.js"></script>
+</body>
+</html>
