@@ -112,21 +112,24 @@ class PenaltyMode:
             dirs.remove(kick_direction)
             self.keeper_dive_dir = np.random.choice(dirs)
 
-        # Map keeper's final destination in pixels
+        # Map keeper's final destination in pixels to match target zone centers
         goal_w = self.physics.goal_width
         goal_h = self.physics.goal_height
         
         if self.keeper_dive_dir == "LEFT":
-            self.keeper_target_x = self.physics.goal_left + int(goal_w * 0.15)
-            # Match high/low
-            self.keeper_target_y = self.physics.goal_bottom - int(goal_h * (0.6 if kick_height == "HIGH" else 0.2))
+            self.keeper_target_x = self.physics.goal_left + int(goal_w * 0.30)
         elif self.keeper_dive_dir == "RIGHT":
-            self.keeper_target_x = self.physics.goal_right - int(goal_w * 0.15)
-            self.keeper_target_y = self.physics.goal_bottom - int(goal_h * (0.6 if kick_height == "HIGH" else 0.2))
+            self.keeper_target_x = self.physics.goal_right - int(goal_w * 0.30)
         else:
-            # Center
             self.keeper_target_x = self.physics.goal_center_x
-            self.keeper_target_y = self.physics.goal_bottom - int(goal_h * (0.4 if kick_height == "HIGH" else 0.1))
+
+        if kick_height == "HIGH":
+            self.keeper_target_y = self.physics.goal_bottom - int(goal_h * 0.32)
+        elif kick_height == "LOW" or kick_height == "BOTTOM":
+            self.keeper_target_y = self.physics.goal_bottom - int(goal_h * 0.07)
+        else:
+            # MID
+            self.keeper_target_y = self.physics.goal_bottom - int(goal_h * 0.20)
 
     def update(self, frame_raw):
         """

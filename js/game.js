@@ -1365,18 +1365,18 @@ class GameOrchestrator {
         
         // ── Set goalkeeper anchor position (body center for animation) ──────
         if (this.keeperDiveDir === "LEFT") {
-            this.keeperTargetX = gl + Math.floor(gw * 0.18);
+            this.keeperTargetX = gl + Math.floor(gw * 0.30);
         } else if (this.keeperDiveDir === "RIGHT") {
-            this.keeperTargetX = gr - Math.floor(gw * 0.18);
+            this.keeperTargetX = gr - Math.floor(gw * 0.30);
         } else {
             this.keeperTargetX = gcx;
         }
         if (this.keeperDiveHeight === "HIGH") {
-            this.keeperTargetY = gt + Math.floor(gh * 0.22);
+            this.keeperTargetY = gb - Math.floor(gh * 0.32);
         } else if (this.keeperDiveHeight === "LOW") {
-            this.keeperTargetY = gb - Math.floor(gh * 0.12);
+            this.keeperTargetY = gb - Math.floor(gh * 0.07);
         } else {
-            this.keeperTargetY = gt + Math.floor(gh * 0.52);
+            this.keeperTargetY = gb - Math.floor(gh * 0.20);
         }
         
         // ── Build physical colliders (head, torso, left arm, right arm) ──────
