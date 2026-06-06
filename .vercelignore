@@ -1,0 +1,6 @@
+# Exclude Pygame desktop files from Vercel build to prevent Python serverless function detection
+main.py
+requirements.txt
+game/
+vision/
+scratch/
