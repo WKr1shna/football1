@@ -150,6 +150,13 @@ class GameOrchestrator {
         this.gameWebcamCanvas = document.getElementById('game-webcam-canvas');
         this.gameWebcamCtx = this.gameWebcamCanvas.getContext('2d');
         
+        // Offscreen canvas for procedural caching
+        this.stadiumCanvas = document.createElement('canvas');
+        this.stadiumCanvas.width = 1024;
+        this.stadiumCanvas.height = 768;
+        this.stadiumCtx = this.stadiumCanvas.getContext('2d');
+        this.renderProceduralStadium(this.stadiumCtx, 1024, 768);
+        
         // Images preloading
         this.images = {
             stadium: new Image(),
@@ -254,6 +261,25 @@ class GameOrchestrator {
         this.keeperReactionStarted = false;
         this.lastPerceptionUpdateTime = 0;
         this._lastBodyLean = 0;
+        
+        // Purely Visual Animation State Machine
+        this.keeperAnim = {
+            state: 0, // 0: IDLE, 1: ANTICIPATE, 2: PUSH, 3: DIVE, 4: SAVE, 5: LAND, 6: RECOVER
+            dir: "CENTER",
+            height: "MID",
+            startTime: 0,
+            elapsed: 0,
+            visX: 512,
+            visY: 500,
+            headRot: 0,
+            torsoRot: 0,
+            leftArmRot: 0,
+            rightArmRot: 0,
+            leftLegRot: 0,
+            rightLegRot: 0,
+            shadowScale: 1.0,
+            shadowWidth: 45
+        };
         
         // Gameplay Variables
         this.attempts = 0;
@@ -2490,6 +2516,12 @@ class GameOrchestrator {
         const scale = 0.55;
         ctx.scale(scale, scale);
         
+        // Ground Shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.beginPath();
+        ctx.ellipse(0, 5, 25, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
         // Glow effect
         ctx.shadowBlur = 8;
         ctx.shadowColor = 'rgba(250, 100, 50, 0.4)';
@@ -2998,179 +3030,409 @@ class GameOrchestrator {
         ctx.stroke();
     }
 
+    updateGoalkeeperAnimation(deltaTime) {
+        const anim = this.keeperAnim;
+        anim.elapsed += deltaTime;
+
+        // Sync with AI state changes
+        const logicState = this.keeperAiState;
+        
+        if (logicState === "READING") {
+            if (anim.state !== 0) {
+                anim.state = 0; // IDLE
+                anim.elapsed = 0;
+            }
+        } else if (logicState === "ANTICIPATING") {
+            if (anim.state !== 1 && anim.state !== 2) {
+                anim.state = this.keeperDiveDir === "LEFT" ? 1 : 2; // ANTICIPATE
+                anim.elapsed = 0;
+            }
+        } else if (logicState === "DIVING") {
+            if (anim.state === 1 || anim.state === 2) {
+                anim.state = this.keeperDiveDir === "LEFT" ? 3 : 4; // PUSH
+                anim.elapsed = 0;
+            }
+            // Transition from PUSH to DIVE after 150ms
+            if ((anim.state === 3 || anim.state === 4) && anim.elapsed > 150) {
+                anim.state = this.keeperDiveDir === "LEFT" ? 5 : 6; // DIVE
+                anim.elapsed = 0;
+            }
+        } else if (logicState === "LANDED") {
+            if (anim.state !== 9 && anim.state !== 10 && anim.state !== 11) {
+                anim.state = this.keeperDiveDir === "LEFT" ? 9 : 10; // LAND
+                anim.elapsed = 0;
+            }
+            if ((anim.state === 9 || anim.state === 10) && anim.elapsed > 300) {
+                anim.state = 11; // RECOVER
+                anim.elapsed = 0;
+            }
+        }
+
+        // --- Calculate visual variables based on anim.state and elapsed ---
+        
+        // Base logical position
+        const targetX = this.keeperX;
+        const targetY = this.keeperY;
+        
+        // Interpolate visual position (visX, visY) towards logical target
+        // Different states have different speeds/easings
+        let smoothing = 0.2; 
+        
+        let leanX = 0;
+        let leanY = 0;
+        
+        anim.headRot = 0;
+        anim.torsoRot = 0;
+        anim.leftArmRot = 0;
+        anim.rightArmRot = 0;
+        anim.leftLegRot = 0;
+        anim.rightLegRot = 0;
+        anim.shadowScale = 1.0;
+        anim.shadowWidth = 45;
+
+        // Head tracking based on ball
+        const ballX = this.ballScreenPos.x;
+        const headOffset = (ballX - anim.visX) * 0.05;
+        anim.headRot = Math.max(-25, Math.min(25, headOffset));
+
+        switch(anim.state) {
+            case 0: // IDLE
+                // Subtle breathing and swaying
+                leanY = Math.sin(anim.elapsed * 0.003) * 3;
+                leanX = Math.cos(anim.elapsed * 0.001) * 2;
+                anim.leftArmRot = 15 + Math.sin(anim.elapsed * 0.002) * 2;
+                anim.rightArmRot = -15 - Math.sin(anim.elapsed * 0.002) * 2;
+                anim.leftLegRot = 5;
+                anim.rightLegRot = -5;
+                smoothing = 0.1;
+                break;
+                
+            case 1: // ANTICIPATE LEFT
+            case 2: // ANTICIPATE RIGHT
+                {
+                    const dir = anim.state === 1 ? -1 : 1;
+                    const progress = Math.min(1.0, anim.elapsed / 150.0);
+                    leanY = 15 * progress; // crouch
+                    leanX = 10 * dir * progress; // shift weight
+                    anim.torsoRot = 10 * dir * progress;
+                    anim.leftArmRot = 20 * progress;
+                    anim.rightArmRot = -20 * progress;
+                    // Bend legs
+                    anim.leftLegRot = 10 * dir * progress;
+                    anim.rightLegRot = 10 * dir * progress;
+                    smoothing = 0.3;
+                }
+                break;
+
+            case 3: // PUSH LEFT
+            case 4: // PUSH RIGHT
+                {
+                    const dir = anim.state === 3 ? -1 : 1;
+                    const progress = Math.min(1.0, anim.elapsed / 150.0);
+                    leanY = 15 - (15 * progress); // spring up
+                    anim.torsoRot = 20 * dir * progress;
+                    
+                    // Leading arm extends, trailing arm pulls back
+                    if (dir === -1) {
+                        anim.leftArmRot = 60 * progress;
+                        anim.rightArmRot = -30 * progress;
+                        anim.rightLegRot = -45 * progress; // push foot
+                    } else {
+                        anim.rightArmRot = -60 * progress;
+                        anim.leftArmRot = 30 * progress;
+                        anim.leftLegRot = 45 * progress; // push foot
+                    }
+                    smoothing = 0.4;
+                }
+                break;
+
+            case 5: // DIVE LEFT
+            case 6: // DIVE RIGHT
+                {
+                    const dir = anim.state === 5 ? -1 : 1;
+                    // Fully committed dive pose
+                    
+                    // Differentiate High/Mid/Low dive
+                    const hType = this.keeperDiveHeight;
+                    let diveAngle = 75; // almost horizontal
+                    if (hType === "HIGH") diveAngle = 45; // angle upwards
+                    else if (hType === "LOW") diveAngle = 85; // very flat
+                    
+                    anim.torsoRot = diveAngle * dir;
+                    
+                    // Head stays aligned but looks towards ball
+                    anim.headRot = (-diveAngle * dir * 0.4) + headOffset * 0.5;
+                    
+                    // Arms stretch
+                    if (dir === -1) {
+                        anim.leftArmRot = 95;  // fully extended towards ball
+                        anim.rightArmRot = 40; // trails behind
+                        anim.leftLegRot = 20;
+                        anim.rightLegRot = 60; // trailing leg
+                    } else {
+                        anim.rightArmRot = -95;
+                        anim.leftArmRot = -40;
+                        anim.rightLegRot = -20;
+                        anim.leftLegRot = -60;
+                    }
+                    
+                    anim.shadowScale = hType === "HIGH" ? 0.6 : (hType === "LOW" ? 1.2 : 0.8);
+                    anim.shadowWidth = 70; // stretch shadow during dive
+                    
+                    // Check for outcome collision reaction
+                    if (this.outcomeText && this.outcomeText.includes("SAVE")) {
+                        // Recoil glove slightly if save registered
+                        if (dir === -1) anim.leftArmRot -= 15;
+                        else anim.rightArmRot += 15;
+                        
+                        anim.torsoRot -= 5 * dir; // body recoil
+                    }
+                    
+                    smoothing = 0.5;
+                }
+                break;
+
+            case 9:  // LAND LEFT
+            case 10: // LAND RIGHT
+                {
+                    const dir = anim.state === 9 ? -1 : 1;
+                    const progress = Math.min(1.0, anim.elapsed / 300.0);
+                    
+                    // Transition from horizontal to slightly tucked ground position
+                    anim.torsoRot = (75 * dir) * (1.0 - progress * 0.3);
+                    anim.shadowScale = 1.0;
+                    anim.shadowWidth = 60 - (15 * progress);
+                    
+                    if (dir === -1) {
+                        anim.leftArmRot = 95 * (1.0 - progress * 0.5);
+                        anim.rightArmRot = 40 * (1.0 - progress);
+                    } else {
+                        anim.rightArmRot = -95 * (1.0 - progress * 0.5);
+                        anim.leftArmRot = -40 * (1.0 - progress);
+                    }
+                    smoothing = 0.3;
+                }
+                break;
+
+            case 11: // RECOVER
+                {
+                    const progress = Math.min(1.0, anim.elapsed / 500.0);
+                    anim.torsoRot = anim.torsoRot * (1.0 - progress);
+                    anim.leftArmRot = anim.leftArmRot * (1.0 - progress);
+                    anim.rightArmRot = anim.rightArmRot * (1.0 - progress);
+                    anim.leftLegRot = anim.leftLegRot * (1.0 - progress);
+                    anim.rightLegRot = anim.rightLegRot * (1.0 - progress);
+                    smoothing = 0.15;
+                }
+                break;
+        }
+
+        // Apply interpolation to visual position (independent of collision)
+        anim.visX += ((targetX + leanX) - anim.visX) * smoothing;
+        anim.visY += ((targetY + leanY) - anim.visY) * smoothing;
+    }
+
     drawFirstPersonGoalkeeper(ctx) {
+        // Calculate deltaTime for smooth animation
+        const now = Date.now();
+        if (!this._lastGkTime) this._lastGkTime = now;
+        const deltaTime = now - this._lastGkTime;
+        this._lastGkTime = now;
+        
+        this.updateGoalkeeperAnimation(deltaTime);
+        const anim = this.keeperAnim;
+        
         const goalieHeight = Math.floor(this.physics.strikerGoalHeight * 0.32);
         
-        // Determine state parameters
-        let img = this.images.goalkeeperIdle;
-        let skewX = 0;
-        let drawWidthScale = 1.4;
-        let drawHeightScale = 1.8;
-        
-        const isOutcomeSave = this.outcomeText && this.outcomeText.includes("SAVE");
-        const isCelebration = (this.gameState === "RESULT_CELEBRATION");
-        
-        if (isCelebration && isOutcomeSave) {
-            img = this.images.goalkeeperSave;
-            drawWidthScale = 1.6;
-            drawHeightScale = 1.9;
-        } else if (this.gameState === "BALL_FLIGHT") {
-            if (this.keeperAiState === "ANTICIPATING") {
-                const triggerIdx = this.aiDiveTriggerIndex || 0;
-                const progress = triggerIdx > 0 ? Math.min(1.0, this.trajectoryIndex / triggerIdx) : 0.0;
-                
-                img = this.images.goalkeeperIdle;
-                if (this.keeperDiveDir === "LEFT") {
-                    skewX = -0.18 * progress;
-                } else if (this.keeperDiveDir === "RIGHT") {
-                    skewX = 0.18 * progress;
-                }
-            } else if (this.keeperAiState === "DIVING" || this.keeperAiState === "LANDED") {
-                if (this.keeperDiveDir === "LEFT") {
-                    img = this.images.goalkeeperDiveLeft;
-                    drawWidthScale = 1.8;
-                    drawHeightScale = 1.5;
-                } else if (this.keeperDiveDir === "RIGHT") {
-                    img = this.images.goalkeeperDiveRight;
-                    drawWidthScale = 1.8;
-                    drawHeightScale = 1.5;
-                } else {
-                    img = this.images.goalkeeperIdle;
-                }
-            } else {
-                img = this.images.goalkeeperIdle;
-            }
-        } else {
-            img = this.images.goalkeeperIdle;
-        }
-
         ctx.save();
-        ctx.translate(this.keeperX, this.keeperY);
-        if (this.keeperRotation !== 0) {
-            ctx.rotate((this.keeperRotation * Math.PI) / 180.0);
-        }
-
-        // Handle cross-fade transition
-        if (this._lastKeeperImg !== img) {
-            this._prevKeeperImg = this._lastKeeperImg;
-            this._prevDrawWidthScale = this._lastDrawWidthScale || drawWidthScale;
-            this._prevDrawHeightScale = this._lastDrawHeightScale || drawHeightScale;
-            this._prevSkewX = this._lastSkewX || skewX;
-            this._keeperTransitionStart = Date.now();
-            this._lastKeeperImg = img;
-            this._lastDrawWidthScale = drawWidthScale;
-            this._lastDrawHeightScale = drawHeightScale;
-            this._lastSkewX = skewX;
-        }
-
-        const transitionDuration = 150; // ms
-        const elapsedTransition = Date.now() - (this._keeperTransitionStart || 0);
+        ctx.translate(anim.visX, anim.visY);
         
-        const drawSprite = (spriteImg, wScale, hScale, skX, opacity) => {
-            ctx.save();
-            ctx.globalAlpha = opacity;
-            if (skX !== 0) ctx.transform(1, 0, skX, 1, 0, 0);
-            
-            if (spriteImg.complete && spriteImg.naturalWidth !== 0) {
-                ctx.drawImage(spriteImg, -goalieHeight * (wScale / 2), -goalieHeight * (hScale * 0.9), goalieHeight * wScale, goalieHeight * hScale);
-            } else {
-                // Procedural goalkeeper avatar fallback
-                ctx.fillStyle = '#00f0ff'; // neon cyan jersey
-                ctx.beginPath();
-                ctx.moveTo(-goalieHeight * 0.3, -goalieHeight * 0.2);
-                ctx.lineTo(goalieHeight * 0.3, -goalieHeight * 0.2);
-                ctx.lineTo(goalieHeight * 0.25, goalieHeight * 0.4);
-                ctx.lineTo(-goalieHeight * 0.25, goalieHeight * 0.4);
-                ctx.closePath();
-                ctx.fill();
-                
-                // Shorts
-                ctx.fillStyle = '#0c1630';
-                ctx.fillRect(-goalieHeight * 0.24, goalieHeight * 0.4, goalieHeight * 0.48, goalieHeight * 0.25);
-                
-                // Head
-                ctx.fillStyle = '#f3c19b';
-                ctx.beginPath();
-                ctx.arc(0, -goalieHeight * 0.42, goalieHeight * 0.2, 0, 2 * Math.PI);
-                ctx.fill();
-                
-                // Hair
-                ctx.fillStyle = '#ff6c00'; // neon orange hair
-                ctx.beginPath();
-                ctx.arc(0, -goalieHeight * 0.48, goalieHeight * 0.2, Math.PI, 2 * Math.PI);
-                ctx.fill();
-                
-                // Arms
-                ctx.lineWidth = goalieHeight * 0.12;
-                ctx.strokeStyle = '#00f0ff';
-                ctx.lineCap = 'round';
-                
-                // Left arm
-                ctx.beginPath();
-                ctx.moveTo(-goalieHeight * 0.3, -goalieHeight * 0.1);
-                ctx.lineTo(-goalieHeight * 0.75, -goalieHeight * 0.3);
-                ctx.stroke();
-                
-                ctx.strokeStyle = '#f3c19b';
-                ctx.beginPath();
-                ctx.moveTo(-goalieHeight * 0.7, -goalieHeight * 0.28);
-                ctx.lineTo(-goalieHeight * 0.95, -goalieHeight * 0.45);
-                ctx.stroke();
-                
-                ctx.fillStyle = '#ff007f'; // neon pink gloves
-                ctx.beginPath();
-                ctx.arc(-goalieHeight * 0.98, -goalieHeight * 0.47, goalieHeight * 0.14, 0, 2 * Math.PI);
-                ctx.fill();
-                
-                // Right arm
-                ctx.strokeStyle = '#00f0ff';
-                ctx.beginPath();
-                ctx.moveTo(goalieHeight * 0.3, -goalieHeight * 0.1);
-                ctx.lineTo(goalieHeight * 0.75, -goalieHeight * 0.3);
-                ctx.stroke();
-                
-                ctx.strokeStyle = '#f3c19b';
-                ctx.beginPath();
-                ctx.moveTo(goalieHeight * 0.7, -goalieHeight * 0.28);
-                ctx.lineTo(goalieHeight * 0.95, -goalieHeight * 0.45);
-                ctx.stroke();
-                
-                ctx.fillStyle = '#ff007f';
-                ctx.beginPath();
-                ctx.arc(goalieHeight * 0.98, -goalieHeight * 0.47, goalieHeight * 0.14, 0, 2 * Math.PI);
-                ctx.fill();
-                
-                // Legs
-                ctx.strokeStyle = '#f3c19b';
-                ctx.lineWidth = goalieHeight * 0.10;
-                ctx.beginPath();
-                ctx.moveTo(-goalieHeight * 0.15, goalieHeight * 0.65);
-                ctx.lineTo(-goalieHeight * 0.2, goalieHeight * 0.9);
-                ctx.moveTo(goalieHeight * 0.15, goalieHeight * 0.65);
-                ctx.lineTo(goalieHeight * 0.2, goalieHeight * 0.9);
-                ctx.stroke();
-                
-                // Boots
-                ctx.fillStyle = '#64ff64'; // neon green boots
-                ctx.fillRect(-goalieHeight * 0.26, goalieHeight * 0.9, goalieHeight * 0.15, goalieHeight * 0.08);
-                ctx.fillRect(goalieHeight * 0.11, goalieHeight * 0.9, goalieHeight * 0.15, goalieHeight * 0.08);
-            }
-            ctx.restore();
-        };
+        // --- 1. Dynamic Ground Shadow ---
+        ctx.fillStyle = `rgba(0, 0, 0, ${0.4 * anim.shadowScale})`;
+        ctx.beginPath();
+        // Base shadow Y should anchor near the feet (which are roughly +goalieHeight*0.45 relative to center)
+        ctx.ellipse(0, goalieHeight * 0.45, anim.shadowWidth * anim.shadowScale, 12 * anim.shadowScale, 0, 0, Math.PI * 2);
+        ctx.fill();
 
-        if (this._prevKeeperImg && elapsedTransition < transitionDuration) {
-            const alpha = elapsedTransition / transitionDuration;
-            drawSprite(this._prevKeeperImg, this._prevDrawWidthScale, this._prevDrawHeightScale, this._prevSkewX, 1.0 - alpha);
-            drawSprite(img, drawWidthScale, drawHeightScale, skewX, alpha);
-        } else {
-            drawSprite(img, drawWidthScale, drawHeightScale, skewX, 1.0);
-        }
+        // --- 2. Goalkeeper Renderer ---
+        
+        // Colors
+        const shirtColor = '#ccff00';     // Fluorescent yellow/green
+        const shirtDark = '#99cc00';
+        const shortsColor = '#1a1a24';    // Dark navy/black
+        const skinColor = '#e5aa7a';      // Natural skin tone
+        const gloveColor = '#ffffff';     // White pro gloves
+        const bootColor = '#ff2a2a';      // Bright red boots
+        const hairColor = '#2d1b11';
+        
+        // Helper to convert deg to rad
+        const rad = (deg) => deg * Math.PI / 180;
+        
+        // Draw Torso Center Pivot
+        ctx.rotate(rad(anim.torsoRot));
+        
+        // Draw Legs (behind torso)
+        ctx.lineWidth = goalieHeight * 0.12;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        
+        // Left Leg
+        ctx.save();
+        ctx.translate(-goalieHeight * 0.1, goalieHeight * 0.15);
+        ctx.rotate(rad(anim.leftLegRot));
+        // Thigh
+        ctx.strokeStyle = shortsColor;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, goalieHeight * 0.15);
+        ctx.stroke();
+        // Calf
+        ctx.strokeStyle = skinColor;
+        ctx.beginPath();
+        ctx.moveTo(0, goalieHeight * 0.15);
+        ctx.lineTo(0, goalieHeight * 0.35);
+        ctx.stroke();
+        // Boot
+        ctx.fillStyle = bootColor;
+        ctx.fillRect(-goalieHeight * 0.08, goalieHeight * 0.35, goalieHeight * 0.16, goalieHeight * 0.08);
+        ctx.restore();
 
-        // Draw debug hitboxes (physical colliders)
+        // Right Leg
+        ctx.save();
+        ctx.translate(goalieHeight * 0.1, goalieHeight * 0.15);
+        ctx.rotate(rad(anim.rightLegRot));
+        ctx.strokeStyle = shortsColor;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, goalieHeight * 0.15);
+        ctx.stroke();
+        ctx.strokeStyle = skinColor;
+        ctx.beginPath();
+        ctx.moveTo(0, goalieHeight * 0.15);
+        ctx.lineTo(0, goalieHeight * 0.35);
+        ctx.stroke();
+        ctx.fillStyle = bootColor;
+        ctx.fillRect(-goalieHeight * 0.08, goalieHeight * 0.35, goalieHeight * 0.16, goalieHeight * 0.08);
+        ctx.restore();
+
+        // Draw Torso/Jersey
+        // Create 3D gradient for jersey
+        const grad = ctx.createLinearGradient(-goalieHeight * 0.2, 0, goalieHeight * 0.2, 0);
+        grad.addColorStop(0, shirtDark);
+        grad.addColorStop(0.5, shirtColor);
+        grad.addColorStop(1, shirtDark);
+        
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(-goalieHeight * 0.22, -goalieHeight * 0.25); // Top left shoulder
+        ctx.lineTo(goalieHeight * 0.22, -goalieHeight * 0.25);  // Top right shoulder
+        ctx.lineTo(goalieHeight * 0.18, goalieHeight * 0.2);    // Bottom right hip
+        ctx.lineTo(-goalieHeight * 0.18, goalieHeight * 0.2);   // Bottom left hip
+        ctx.closePath();
+        ctx.fill();
+        
+        // Collar
+        ctx.fillStyle = shortsColor;
+        ctx.beginPath();
+        ctx.arc(0, -goalieHeight * 0.25, goalieHeight * 0.08, 0, Math.PI);
+        ctx.fill();
+        
+        // Pattern on Jersey
+        ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(-goalieHeight * 0.1, -goalieHeight * 0.2);
+        ctx.lineTo(goalieHeight * 0.1, goalieHeight * 0.1);
+        ctx.stroke();
+        
+        // Head (Attached to torso but can rotate independently)
+        ctx.save();
+        ctx.translate(0, -goalieHeight * 0.25); // Move to neck
+        ctx.rotate(rad(anim.headRot - anim.torsoRot)); // Counter-rotate torso to track ball
+        
+        // Neck
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-goalieHeight * 0.05, -goalieHeight * 0.06, goalieHeight * 0.1, goalieHeight * 0.06);
+        
+        // Face
+        ctx.beginPath();
+        ctx.arc(0, -goalieHeight * 0.18, goalieHeight * 0.14, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // Hair
+        ctx.fillStyle = hairColor;
+        ctx.beginPath();
+        ctx.arc(0, -goalieHeight * 0.22, goalieHeight * 0.14, Math.PI, 2 * Math.PI);
+        ctx.fill();
+        ctx.restore();
+
+        // Arms (Procedural IK-style)
+        ctx.lineWidth = goalieHeight * 0.11;
+        
+        // Left Arm
+        ctx.save();
+        ctx.translate(-goalieHeight * 0.2, -goalieHeight * 0.2);
+        ctx.rotate(rad(anim.leftArmRot));
+        // Upper Arm (Jersey)
+        ctx.strokeStyle = shirtColor;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-goalieHeight * 0.2, goalieHeight * 0.15);
+        ctx.stroke();
+        // Lower Arm (Skin)
+        ctx.strokeStyle = skinColor;
+        ctx.beginPath();
+        ctx.moveTo(-goalieHeight * 0.2, goalieHeight * 0.15);
+        ctx.lineTo(-goalieHeight * 0.35, goalieHeight * 0.35);
+        ctx.stroke();
+        // Glove
+        ctx.fillStyle = gloveColor;
+        ctx.beginPath();
+        ctx.arc(-goalieHeight * 0.38, goalieHeight * 0.38, goalieHeight * 0.1, 0, 2 * Math.PI);
+        ctx.fill();
+        // Glove details
+        ctx.fillStyle = '#000';
+        ctx.fillRect(-goalieHeight * 0.4, goalieHeight * 0.35, goalieHeight * 0.1, goalieHeight * 0.04);
+        ctx.restore();
+
+        // Right Arm
+        ctx.save();
+        ctx.translate(goalieHeight * 0.2, -goalieHeight * 0.2);
+        ctx.rotate(rad(anim.rightArmRot));
+        // Upper Arm
+        ctx.strokeStyle = shirtColor;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(goalieHeight * 0.2, goalieHeight * 0.15);
+        ctx.stroke();
+        // Lower Arm
+        ctx.strokeStyle = skinColor;
+        ctx.beginPath();
+        ctx.moveTo(goalieHeight * 0.2, goalieHeight * 0.15);
+        ctx.lineTo(goalieHeight * 0.35, goalieHeight * 0.35);
+        ctx.stroke();
+        // Glove
+        ctx.fillStyle = gloveColor;
+        ctx.beginPath();
+        ctx.arc(goalieHeight * 0.38, goalieHeight * 0.38, goalieHeight * 0.1, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.fillRect(goalieHeight * 0.3, goalieHeight * 0.35, goalieHeight * 0.1, goalieHeight * 0.04);
+        ctx.restore();
+        
+        ctx.restore(); // Undo translations
+
+        // 3. Draw Debug Logical Hitboxes over the visual render
         if (this.debugMode || this.trainingMode) {
             const def = this._keeperColliderDef;
             if (def && def.length > 0) {
                 ctx.save();
+                // Render at true logical position (this.keeperX, this.keeperY)
+                ctx.translate(this.keeperX, this.keeperY);
+                if (this.keeperRotation !== 0) {
+                    ctx.rotate((this.keeperRotation * Math.PI) / 180.0);
+                }
+                
                 ctx.lineWidth = 2;
                 for (const col of def) {
                     ctx.strokeStyle = '#ff00ff'; // neon magenta
@@ -3189,8 +3451,6 @@ class GameOrchestrator {
                 ctx.restore();
             }
         }
-
-        ctx.restore();
     }
 
     drawStrikerBallAtRest(ctx) {
@@ -3310,63 +3570,132 @@ class GameOrchestrator {
     }
 
     // DRAWING HELPERS (CANVAS)
+    renderProceduralStadium(ctx, w, h) {
+        // Sky Gradient (Sunset to night transition)
+        const skyH = Math.floor(h * 0.45);
+        const skyGrad = ctx.createLinearGradient(0, 0, 0, skyH);
+        skyGrad.addColorStop(0, '#0a0a1a'); // Dark night sky
+        skyGrad.addColorStop(0.6, '#141432');
+        skyGrad.addColorStop(1, '#1e2846');
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, w, skyH);
+        
+        // Distant Stadium Seating
+        ctx.fillStyle = '#0f141e';
+        ctx.beginPath();
+        ctx.moveTo(0, skyH);
+        ctx.lineTo(w * 0.2, skyH * 0.7);
+        ctx.lineTo(w * 0.8, skyH * 0.7);
+        ctx.lineTo(w, skyH);
+        ctx.fill();
+        
+        // Seating tiers
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 5; i++) {
+            ctx.beginPath();
+            ctx.moveTo(0, skyH - i * 15);
+            ctx.lineTo(w, skyH - i * 15);
+            ctx.stroke();
+        }
+        
+        // Floodlights
+        const drawLight = (x, y) => {
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x - 60, skyH);
+            ctx.lineTo(x + 60, skyH);
+            ctx.fill();
+        };
+        drawLight(w * 0.2, skyH * 0.6);
+        drawLight(w * 0.8, skyH * 0.6);
+        
+        // Advertising Boards
+        ctx.fillStyle = '#1e1e28';
+        ctx.fillRect(0, skyH - 10, w, 10);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+        for (let i = 0; i < w; i += 80) {
+            ctx.fillRect(i + 10, skyH - 8, 60, 6);
+        }
+
+        // Pitch Base Gradient
+        const pitchH = h - skyH;
+        const pitchGrad = ctx.createLinearGradient(0, skyH, 0, h);
+        pitchGrad.addColorStop(0, '#0a4614');
+        pitchGrad.addColorStop(1, '#1e8228');
+        ctx.fillStyle = pitchGrad;
+        ctx.fillRect(0, skyH, w, pitchH);
+        
+        // Perspective Mowing Stripes
+        const numStripes = 10;
+        for (let i = 0; i < numStripes; i++) {
+            if (i % 2 === 0) {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+                ctx.beginPath();
+                
+                // Vanishing point perspective
+                const topW = w / numStripes;
+                const bottomW = (w * 1.5) / numStripes;
+                const topX = (i * topW);
+                const bottomX = (i * bottomW) - (w * 0.25);
+                
+                ctx.moveTo(topX, skyH);
+                ctx.lineTo(topX + topW, skyH);
+                ctx.lineTo(bottomX + bottomW, h);
+                ctx.lineTo(bottomX, h);
+                ctx.fill();
+            }
+        }
+        
+        // Pitch Markings (Lines)
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.lineWidth = 4;
+        
+        // Penalty Box
+        ctx.beginPath();
+        ctx.moveTo(this.physics.goalLeft - 100, skyH);
+        ctx.lineTo(this.physics.goalLeft - 250, h * 0.7);
+        ctx.lineTo(this.physics.goalRight + 250, h * 0.7);
+        ctx.lineTo(this.physics.goalRight + 100, skyH);
+        ctx.stroke();
+        
+        // Six-yard Box
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(this.physics.goalLeft - 20, skyH);
+        ctx.lineTo(this.physics.goalLeft - 60, h * 0.55);
+        ctx.lineTo(this.physics.goalRight + 60, h * 0.55);
+        ctx.lineTo(this.physics.goalRight + 20, skyH);
+        ctx.stroke();
+        
+        // Penalty spot
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.beginPath();
+        // Adjust for perspective
+        ctx.ellipse(w / 2, this.physics.penaltySpot.y, 8, 4, 0, 0, 2 * Math.PI);
+        ctx.fill();
+    }
+
     drawStadium() {
         const ctx = this.ctx;
         const img = this.images.stadium;
         
-        if (img.complete && img.naturalWidth !== 0) {
+        if (img.complete && img.naturalWidth !== 0 && this.assetManager) {
             ctx.drawImage(img, 0, 0, this.canvas.width, this.canvas.height);
         } else {
-            // Procedural background drawing
-            const h = this.canvas.height;
-            // Sky Sunset Gradient
-            const skyH = Math.floor(h * 0.45);
-            const skyGrad = ctx.createLinearGradient(0, 0, 0, skyH);
-            skyGrad.addColorStop(0, '#281446');
-            skyGrad.addColorStop(1, '#f06432');
-            ctx.fillStyle = skyGrad;
-            ctx.fillRect(0, 0, this.canvas.width, skyH);
-            
-            // Floodlights
-            ctx.fillStyle = 'rgba(255,255,200,0.5)';
-            ctx.shadowBlur = 40;
-            ctx.shadowColor = '#ffe6c8';
-            ctx.beginPath();
-            ctx.arc(this.canvas.width * 0.15, h * 0.1, 45, 0, 2 * Math.PI);
-            ctx.arc(this.canvas.width * 0.85, h * 0.1, 45, 0, 2 * Math.PI);
-            ctx.fill();
-            ctx.shadowBlur = 0;
-            
-            // Pitch Gradient
-            const pitchH = this.canvas.height - skyH;
-            const pitchGrad = ctx.createLinearGradient(0, skyH, 0, this.canvas.height);
-            pitchGrad.addColorStop(0, '#0a5014');
-            pitchGrad.addColorStop(1, '#1e9628');
-            ctx.fillStyle = pitchGrad;
-            ctx.fillRect(0, skyH, this.canvas.width, pitchH);
-            
-            // Pitch striping
-            ctx.fillStyle = 'rgba(255,255,255,0.05)';
-            for (let i = 0; i < 8; i += 2) {
-                ctx.fillRect(0, skyH + (i * pitchH / 8), this.canvas.width, pitchH / 8);
-            }
-            
-            // Penalty Box markers
-            ctx.strokeStyle = 'rgba(230,230,230,0.4)';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(this.physics.goalLeft, skyH);
-            ctx.lineTo(this.canvas.width * 0.12, Math.floor(this.canvas.height * 0.7));
-            ctx.lineTo(this.canvas.width * 0.88, Math.floor(this.canvas.height * 0.7));
-            ctx.lineTo(this.physics.goalRight, skyH);
-            ctx.stroke();
-            
-            // Penalty spot
-            ctx.fillStyle = 'rgba(230,230,230,0.8)';
-            ctx.beginPath();
-            ctx.arc(this.canvas.width / 2, this.physics.penaltySpot.y, 6, 0, 2 * Math.PI);
-            ctx.fill();
+            // Use cached procedural stadium
+            ctx.drawImage(this.stadiumCanvas, 0, 0);
         }
+        
+        // Global ambient night lighting
+        ctx.fillStyle = 'rgba(0, 10, 30, 0.15)';
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     }
 
     drawGoal() {
@@ -3382,67 +3711,114 @@ class GameOrchestrator {
         const gw = gr - gl;
         const gh = gb - gt;
         
-        // Net ripple offset calculation (active after goal conceded)
+        // Depth scale for 3D goal posts
+        const depth = isGK ? 40 : 25;
+        
+        // Net ripple offset calculation
         const flashElapsed = this.screenFlashTimer ? Date.now() - this.screenFlashTimer : 9999;
         const rippleActive = flashElapsed < 700;
         
         if (img.complete && img.naturalWidth !== 0 && !isGK) {
             ctx.drawImage(img, gl, gt);
         } else {
-            // Procedural Goal Frame
-            ctx.strokeStyle = isGK ? 'rgba(255, 255, 255, 0.95)' : '#f0f0f0';
-            ctx.lineWidth = isGK ? 12 : 8;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
+            // Procedural 3D Goal Frame
             
-            // Shadow under posts
-            ctx.shadowBlur = isGK ? 20 : 0;
-            ctx.shadowColor = 'rgba(255, 255, 255, 0.3)';
+            // Back net structure (darker)
+            const netAlpha = isGK ? 0.35 : 0.25;
+            ctx.strokeStyle = `rgba(220, 220, 220, ${netAlpha})`;
+            ctx.lineWidth = isGK ? 2 : 1.5;
             
-            ctx.beginPath();
-            ctx.moveTo(gl, gb);
-            ctx.lineTo(gl, gt);
-            ctx.lineTo(gr, gt);
-            ctx.lineTo(gr, gb);
-            ctx.stroke();
+            const backL = gl + depth;
+            const backR = gr - depth;
+            const backT = gt + depth;
             
-            ctx.shadowBlur = 0;
+            // Draw Net Mesh
+            const space = isGK ? 30 : 20;
             
-            // Draw net mesh grid with optional ripple distortion
-            const netAlpha = isGK ? 0.28 : 0.15;
-            ctx.strokeStyle = `rgba(240,240,240,${netAlpha})`;
-            ctx.lineWidth = isGK ? 1.5 : 1.5;
-            
-            const space = isGK ? 35 : 25;
-            
-            for (let x = gl + space; x < gr; x += space) {
+            // Vertical mesh lines
+            for (let x = backL; x <= backR; x += space) {
                 ctx.beginPath();
-                let prevY = gt;
-                ctx.moveTo(x, prevY);
-                for (let y = gt + 10; y <= gb; y += 10) {
+                ctx.moveTo(x, backT);
+                for (let y = backT; y <= gb; y += 10) {
                     let rippleOff = 0;
-                    if (rippleActive && isGK) {
+                    if (rippleActive) {
                         const distFromCenter = Math.abs(x - this.ballScreenPos.x);
-                        const rippleAmt = Math.max(0, 30 - distFromCenter * 0.12) * Math.sin((y - gt) * 0.12 + flashElapsed * 0.025);
+                        const rippleAmt = Math.max(0, 35 - distFromCenter * 0.1) * Math.sin((y - backT) * 0.15 + flashElapsed * 0.03);
                         rippleOff = rippleAmt * (1.0 - flashElapsed / 700);
                     }
                     ctx.lineTo(x + rippleOff, y);
                 }
                 ctx.stroke();
             }
-            for (let y = gt + space; y < gb; y += space) {
+            
+            // Horizontal mesh lines
+            for (let y = backT; y <= gb; y += space) {
                 ctx.beginPath();
-                ctx.moveTo(gl, y);
-                let rippleOff = 0;
-                for (let x = gl; x <= gr; x += 10) {
-                    if (rippleActive && isGK) {
+                ctx.moveTo(backL, y);
+                for (let x = backL; x <= backR; x += 10) {
+                    let rippleOff = 0;
+                    if (rippleActive) {
                         const distFromBall = Math.abs(y - this.ballScreenPos.y);
-                        rippleOff = Math.max(0, 25 - distFromBall * 0.1) * Math.sin(x * 0.1 + flashElapsed * 0.02) * (1.0 - flashElapsed / 700);
+                        const rippleAmt = Math.max(0, 25 - distFromBall * 0.1) * Math.sin((x - backL) * 0.1 + flashElapsed * 0.03);
+                        rippleOff = rippleAmt * (1.0 - flashElapsed / 700);
                     }
                     ctx.lineTo(x, y + rippleOff);
                 }
                 ctx.stroke();
             }
+            
+            // Side nets
+            ctx.beginPath();
+            ctx.moveTo(gl, gt);
+            ctx.lineTo(backL, backT);
+            ctx.lineTo(backL, gb);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(gr, gt);
+            ctx.lineTo(backR, backT);
+            ctx.lineTo(backR, gb);
+            ctx.stroke();
+
+            // Goal Posts (Front)
+            const postGrad = ctx.createLinearGradient(gl, 0, gl + 15, 0);
+            postGrad.addColorStop(0, '#ffffff');
+            postGrad.addColorStop(0.5, '#e0e0e0');
+            postGrad.addColorStop(1, '#aaaaaa');
+            
+            ctx.fillStyle = postGrad;
+            
+            // Left Post
+            ctx.beginPath();
+            ctx.rect(gl - 8, gt - 8, 16, gh + 8);
+            ctx.fill();
+            
+            // Right Post
+            const postGradR = ctx.createLinearGradient(gr - 15, 0, gr, 0);
+            postGradR.addColorStop(0, '#aaaaaa');
+            postGradR.addColorStop(0.5, '#e0e0e0');
+            postGradR.addColorStop(1, '#ffffff');
+            ctx.fillStyle = postGradR;
+            ctx.beginPath();
+            ctx.rect(gr - 8, gt - 8, 16, gh + 8);
+            ctx.fill();
+            
+            // Crossbar
+            const barGrad = ctx.createLinearGradient(0, gt - 15, 0, gt);
+            barGrad.addColorStop(0, '#ffffff');
+            barGrad.addColorStop(0.5, '#e0e0e0');
+            barGrad.addColorStop(1, '#999999');
+            ctx.fillStyle = barGrad;
+            ctx.beginPath();
+            ctx.rect(gl - 8, gt - 8, gw + 16, 16);
+            ctx.fill();
+            
+            // Ground Shadow for Posts
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+            ctx.beginPath();
+            ctx.ellipse(gl, gb, 20, 8, 0, 0, Math.PI * 2);
+            ctx.ellipse(gr, gb, 20, 8, 0, 0, Math.PI * 2);
+            ctx.fill();
         }
     }
 
@@ -3516,7 +3892,6 @@ class GameOrchestrator {
             ctx.arc(-88, -42, 12, 0, 2 * Math.PI);
             ctx.fill();
             
-            // right arm
             ctx.strokeStyle = '#e6c80a';
             ctx.lineWidth = 12;
             ctx.beginPath();
@@ -3534,11 +3909,9 @@ class GameOrchestrator {
             ctx.arc(88, -42, 12, 0, 2 * Math.PI);
             ctx.fill();
             
-            // Shorts
             ctx.fillStyle = '#282828';
             ctx.fillRect(-22, 40, 44, 25);
             
-            // Boots
             ctx.fillStyle = '#0a0a0a';
             ctx.fillRect(-23, 75, 18, 12);
             ctx.fillRect(5, 75, 18, 12);

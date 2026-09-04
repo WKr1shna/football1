@@ -310,15 +310,15 @@ body {
     position: absolute;
     top: 95px;
     right: 25px;
-    width: 180px;
-    height: 135px;
-    border-radius: 14px;
+    width: 160px;
+    height: 120px;
+    border-radius: 8px;
     overflow: hidden;
-    border: 2px solid rgba(0, 255, 200, 0.4);
-    box-shadow: 0 0 15px rgba(0, 255, 200, 0.2);
-    background: rgba(5, 5, 10, 0.6);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    background: rgba(5, 5, 10, 0.4);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
     display: flex;
     flex-direction: column;
     z-index: 99;
@@ -463,29 +463,29 @@ body {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: 8px 18px;
+    padding: 10px 20px;
     min-width: 150px;
-    height: 58px;
-    border-radius: 12px;
+    height: 60px;
+    border-radius: 8px;
     box-sizing: border-box;
-    background: rgba(5, 5, 10, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    background: linear-gradient(135deg, rgba(5, 5, 10, 0.4), rgba(15, 15, 25, 0.2));
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
 }
 
 #game-view.striker-mode .hud-top-left, 
 #game-view.striker-mode .hud-top-center, 
 #game-view.striker-mode .hud-top-right {
-    border-color: rgba(50, 200, 255, 0.3);
-    box-shadow: 0 0 10px rgba(50, 200, 255, 0.1);
+    border-bottom-color: rgba(50, 200, 255, 0.5);
 }
 
 #game-view.keeper-mode .hud-top-left, 
 #game-view.keeper-mode .hud-top-center, 
 #game-view.keeper-mode .hud-top-right {
-    border-color: rgba(0, 255, 200, 0.3);
-    box-shadow: 0 0 10px rgba(0, 255, 200, 0.1);
+    border-bottom-color: rgba(0, 255, 200, 0.5);
 }
 
 .hud-top-center {

@@ -37,7 +37,7 @@ class TestVisionFootball(unittest.TestCase):
         # Ball should start on the penalty spot (width // 2, int(height * 0.82))
         start_pt = trajectory[0]
         self.assertEqual(start_pt['x'], 512)
-        self.assertEqual(start_pt['y'], 630) # 768 * 0.82 = 629.76
+        self.assertEqual(start_pt['y'], 629) # int(768 * 0.82) = 629
         self.assertEqual(start_pt['radius'], self.physics.start_radius)
         
         # Ball should shrink to end_radius at depth Z=1
